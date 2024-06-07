@@ -6,6 +6,7 @@ import (
 	"aad-auth-proxy/utils"
 	"context"
 	"errors"
+	"go.opentelemetry.io/otel/metric"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
@@ -15,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric/global"
 )
 
 // This manages token provider handler
@@ -87,10 +87,11 @@ func (handler *Handler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		// Record metrics
 		// requests_total{target_host, method, path, user_agent, status_code}
-		requestCountMeter := global.Meter(constants.SERVICE_TELEMETRY_KEY)
+		requestCountMeter := otel.Meter(constants.SERVICE_TELEMETRY_KEY)
 		requestCountIntrument, err := requestCountMeter.Int64Counter(constants.METRIC_REQUESTS_TOTAL)
 		if err == nil {
-			requestCountIntrument.Add(ctx, 1, metricAttributes...)
+			options := metric.WithAttributes(metricAttributes...)
+			requestCountIntrument.Add(ctx, 1, options)
 		}
 
 		FailRequest(w, r, http.StatusServiceUnavailable, "AuthenticationTokenNotFound", ctx, err)
@@ -120,7 +121,7 @@ func (handler *Handler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		// Record metrics
 		// request_duration_milliseconds{target_host, method, path, user_agent, status_code}
-		requestDurationMeter := global.Meter(constants.SERVICE_TELEMETRY_KEY)
+		requestDurationMeter := otel.Meter(constants.SERVICE_TELEMETRY_KEY)
 		requestDurationIntrument, err := requestDurationMeter.Int64Histogram(constants.METRIC_REQUEST_DURATION_MILLISECONDS)
 		if err == nil {
 			metricAttributes := []attribute.KeyValue{
@@ -130,7 +131,8 @@ func (handler *Handler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 				attribute.String("user_agent", r.Header.Get("User-Agent")),
 				attribute.Int("status_code", int(status_code)),
 			}
-			requestDurationIntrument.Record(ctx, duration, metricAttributes...)
+			options := metric.WithAttributes(metricAttributes...)
+			requestDurationIntrument.Record(ctx, duration, options)
 		}
 	}()
 
